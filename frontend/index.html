@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cargador Masivo Excel a MySQL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fb; }
+        .log-error { color: #e3342f; }
+        .log-info { color: #38a169; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-2xl p-6 md:p-10">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-3">
+            Cargador Masivo Excel y Visor
+        </h1>
+
+        <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">1. Cargar Archivo Excel (Paso 1)</h2>
+            <p class="text-sm text-gray-500 mb-4">Seleccione el archivo Excel (.xlsx, .xls).</p>
+            
+            <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <input type="file" id="excelFile" accept=".xlsx, .xls" class="flex-grow text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-indigo-50 file:text-indigo-700
+                    hover:file:bg-indigo-100"
+                />
+
+                <button id="btnLoadData" 
+                    class="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold rounded-full shadow-lg hover:bg-indigo-700 transition duration-150 ease-in-out disabled:bg-indigo-400"
+                    onclick="loadExcelData()">
+                    Leer y Mostrar Datos
+                </button>
+            </div>
+        </div>
+        
+        <div id="dataContainer" class="hidden mb-8 p-6 bg-white rounded-lg border border-gray-200 shadow-md">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">2. Datos del Archivo</h2>
+            <div class="mb-4 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 md:space-x-4">
+                <p id="rowCount" class="text-sm font-medium text-gray-600"></p>
+                
+                <div class="flex space-x-2">
+                    <button id="btnSaveData" 
+                        class="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition duration-150 ease-in-out disabled:bg-green-400"
+                        onclick="saveEditedData()">
+                        Guardar a MySQL
+                    </button>
+                    <button id="btnDownloadExcel" 
+                        class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 ease-in-out"
+                        onclick="downloadExcel()">
+                        Descargar Excel de MySQL
+                    </button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto max-h-96 border rounded-lg">
+                <table id="dataTable" class="min-w-full divide-y divide-gray-200 bg-white">
+                    <thead class="bg-gray-50 sticky top-0">
+                        </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="p-6 bg-gray-50 rounded-lg shadow-inner">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">3. Progreso y Logs</h2>
+            
+            <div id="progressArea" class="mb-4">
+                <div class="relative pt-1">
+                    <div class="flex mb-2 items-center justify-between">
+                        <div>
+                            <span id="progressText" class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full bg-indigo-200 text-indigo-600">
+                                Esperando conexión...
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <span id="progressPercent" class="text-xs font-semibold inline-block text-indigo-600">
+                                0%
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-indigo-200">
+                        <div id="progressBar" style="width:0%" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500 transition-all duration-300"></div>
+                    </div>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-medium text-gray-700 mb-2">Log del Sistema</h3>
+            <div id="systemLog" class="h-48 overflow-y-auto bg-white border border-gray-300 p-3 rounded text-sm break-words whitespace-pre-wrap">
+                </div>
+        </div>
+
+    </div>
+
+<script>
+    // La URL de WebSocket DEBE ser absoluta y apuntar al puerto 8000 del backend
+    const WS_URL = "ws://localhost:8000/ws/progress";
+    let ws;
+    let currentExcelData = [];
+    let currentColumns = [];
+    
+    // Referencias a elementos del DOM
+    const logElement = document.getElementById('systemLog');
+    const progressText = document.getElementById('progressText');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const dataContainer = document.getElementById('dataContainer');
+    const dataTable = document.getElementById('dataTable');
+    const rowCountElement = document.getElementById('rowCount');
+    const btnSaveData = document.getElementById('btnSaveData');
+
+    // --- Funciones de Utilidad ---
+
+    function log(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const entry = document.createElement('div');
+        entry.className = type === 'error' ? 'log-error' : 'log-info';
+        entry.textContent = `[${timestamp}] ${message}`;
+        logElement.appendChild(entry);
+        logElement.scrollTop = logElement.scrollHeight;
+    }
+
+    function updateProgress(value, message) {
+        progressBar.style.width = `${value}%`;
+        progressPercent.textContent = `${value}%`;
+        progressText.textContent = message;
+    }
+
+    // --- WebSocket ---
+
+    function connectWebSocket() {
+        if (ws) ws.close();
+        
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+            log("Conexión WebSocket establecida.", 'info');
+            progressText.textContent = "✅ Conexión WebSocket con el servidor establecida.";
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            switch (data.type) {
+                case 'status':
+                    log(data.message, 'info');
+                    progressText.textContent = data.message;
+                    break;
+                case 'progress':
+                    updateProgress(data.value, `Cargando...`);
+                    break;
+                case 'log':
+                    log(data.message, data.message.includes('Error') ? 'error' : 'info');
+                    break;
+                default:
+                    log(JSON.stringify(data), 'info');
+            }
+        };
+
+        ws.onclose = () => {
+            log("❌ Conexión muerta o perdida. Reintentando en 5s...", 'error');
+            progressText.textContent = "❌ Conexión perdida. Reintentando...";
+            updateProgress(0, "Esperando conexión...");
+            setTimeout(connectWebSocket, 5000); 
+        };
+
+        ws.onerror = (error) => {
+            log(`❌ Error WebSocket: ${error.message || 'undefined'}`, 'error');
+        };
+    }
+
+    // --- Lógica de Carga y Edición ---
+
+    async function loadExcelData() {
+        const fileInput = document.getElementById('excelFile');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            log("Debe seleccionar un archivo Excel.", 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        log(`Iniciando la lectura del archivo ${file.name}...`);
+        
+        try {
+            // CRÍTICO: Usar URL absoluta para el backend (8000)
+            const response = await fetch('http://localhost:8000/upload_excel/', { 
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                // Intenta leer el detalle del error de FastAPI
+                const errorText = await response.text();
+                let errorDetail = { detail: "Error desconocido al subir el archivo." };
+                try {
+                    errorDetail = JSON.parse(errorText);
+                } catch {} 
+
+                throw new Error(errorDetail.detail || errorText);
+            }
+
+            const result = await response.json();
+            currentExcelData = result.data;
+            currentColumns = result.columns;
+            displayDataInTable(currentExcelData, currentColumns);
+            dataContainer.classList.remove('hidden');
+            log(`✅ Lectura y visualización de datos completada.`);
+
+        } catch (error) {
+            log(`❌ Fallo en la lectura/subida: ${error.message}`, 'error');
+            dataContainer.classList.add('hidden');
+        }
+    }
+
+    // Muestra los datos en una tabla
+    function displayDataInTable(data, columns) {
+        const thead = dataTable.querySelector('thead');
+        const tbody = dataTable.querySelector('tbody');
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="' + columns.length + '" class="py-4 text-center text-gray-500">No hay datos para mostrar.</td></tr>';
+            rowCountElement.textContent = '0 filas';
+            return;
+        }
+
+        // 1. Cabeceras
+        let headerHtml = '<tr>';
+        columns.forEach(col => {
+            headerHtml += `<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${col}</th>`;
+        });
+        thead.innerHTML = headerHtml + '</tr>';
+
+        // 2. Filas (NO EDITABLES)
+        data.forEach((row, rowIndex) => {
+            let rowHtml = '<tr>';
+            columns.forEach((col) => {
+                let value = row[col];
+                if (value === null || typeof value === 'undefined' || (typeof value === 'number' && isNaN(value))) {
+                    value = ''; 
+                }
+                
+                value = String(value);
+
+                rowHtml += `<td 
+                    class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 border-r" 
+                    data-row-index="${rowIndex}" 
+                    data-column-name="${col}"
+                    >${value}</td>`;
+            });
+            tbody.innerHTML += rowHtml + '</tr>';
+        });
+
+        rowCountElement.textContent = `${data.length} filas cargadas.`;
+    }
+
+    // Función para guardar los datos
+    async function saveEditedData() {
+        if (currentExcelData.length === 0) {
+            log("No hay datos para guardar en la base de datos.", 'error');
+            return;
+        }
+
+        btnSaveData.disabled = true;
+        log("Enviando datos a FastAPI para guardar en MySQL...");
+        updateProgress(0, "Preparando inserción...");
+
+        try {
+            // CRÍTICO: Usar URL absoluta para el backend (8000)
+            const response = await fetch('http://localhost:8000/update_and_save/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(currentExcelData)
+            });
+
+            if (!response.ok) {
+                const errorDetail = await response.json();
+                throw new Error(errorDetail.detail || "Error al guardar los datos.");
+            }
+
+            const result = await response.json();
+            log(`✅ ${result.message}`, 'info');
+            updateProgress(100, "¡Carga y guardado finalizado!");
+
+        } catch (error) {
+            log(`❌ Fallo en el guardado: ${error.message}`, 'error');
+            updateProgress(0, "Error en el guardado.");
+        } finally {
+            btnSaveData.disabled = false;
+        }
+    }
+
+    // Función para descargar el Excel desde la DB
+    function downloadExcel() {
+        log("Solicitando descarga del archivo Excel desde la base de datos...");
+        // CRÍTICO: Usar URL absoluta para el backend (8000)
+        window.location.href = 'http://localhost:8000/download_excel/';
+    }
+
+    // Iniciar la conexión WebSocket al cargar la página
+    document.addEventListener('DOMContentLoaded', connectWebSocket);
+
+</script>
+</body>
+</html>
