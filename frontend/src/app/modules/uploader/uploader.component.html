@@ -1,0 +1,111 @@
+<div class="uploader-container">
+  <div class="grid-layout">
+    
+    <!-- COLUMNA 1: Carga y Validación -->
+    <div class="col-upload">
+      <div class="card">
+        <h1>Carga y Validación de Archivo Excel</h1>
+        
+        <!-- 1. SELECCIÓN DE ARCHIVO -->
+        <div class="file-input-group">
+          <label for="file-input" class="btn btn-primary">
+            {{ selectedFile ? 'Cambiar Archivo' : 'Seleccionar Archivo (.xlsx)' }}
+          </label>
+          <input 
+            type="file" 
+            id="file-input" 
+            (change)="onFileSelected($event)" 
+            accept=".xlsx"
+            style="display: none;"
+          >
+          <span class="file-name-display">{{ selectedFile?.name || 'Ningún archivo seleccionado' }}</span>
+        </div>
+        
+        <!-- Mensaje de Estado -->
+        <div *ngIf="message" class="message-box" [ngClass]="{'success': isSuccess, 'error': !isSuccess}">
+          <p>{{ message }}</p>
+          <div *ngIf="isUploading || isSaving" class="spinner"></div>
+        </div>
+        
+        <!-- Botón de Subida -->
+        <button 
+          class="btn btn-secondary" 
+          (click)="onUpload()" 
+          [disabled]="!selectedFile || isUploading || isSaving || validSheets.length > 0"
+        >
+          Subir y Validar Archivo
+        </button>
+      </div>
+
+      <!-- TABLA TEMPORAL: Paso 2 (Solo se muestra después de la validación) -->
+      <div *ngIf="validSheets.length > 0" class="card validation-card">
+        <h2>Paso 2: Datos Validados (Tabla Temporal)</h2>
+        <p>Selecciona las hojas que deseas guardar. Total de registros a guardar: **{{ totalRowsSelected }}**</p>
+
+        <div class="sheet-list">
+          <div *ngFor="let sheet of validSheets; index as i" class="sheet-item">
+            <input 
+              type="checkbox" 
+              [id]="'sheet-' + i" 
+              [checked]="sheet.isSelected" 
+              (change)="toggleSheetSelection(i)"
+            >
+            <label [for]="'sheet-' + i">
+              {{ sheet.sheetName }} ({{ sheet.data.length }} filas)
+            </label>
+          </div>
+        </div>
+
+        <div *ngIf="invalidSheets.length > 0" class="invalid-sheets-warning">
+            <p>Advertencia: {{ invalidSheets.length }} hojas inválidas encontradas (ignoradas).</p>
+        </div>
+
+        <!-- Botón de Guardado -->
+        <button 
+          class="btn btn-primary" 
+          (click)="onSaveSelectedData()" 
+          [disabled]="!hasDataToSave || isSaving"
+        >
+          Guardar {{ totalRowsSelected }} Registros en Base de Datos
+        </button>
+      </div>
+    </div>
+    
+    <!-- COLUMNA 2: Historial y Gráfico -->
+    <div class="col-history">
+      <div class="card chart-area">
+        <h2>Gráfico de Análisis</h2>
+        <canvas #conteoChart></canvas>
+        <div *ngIf="contacts.length === 0" class="no-data-msg">
+            <p>No hay datos en el historial para generar el gráfico.</p>
+        </div>
+      </div>
+
+      <div class="card history-table">
+        <h2>Historial de Contactos Guardados ({{ contacts.length }})</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Correo</th>
+                <th>Dirección</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let contact of contacts">
+                <td>{{ contact.id }}</td>
+                <td>{{ contact.nombre }}</td>
+                <td>{{ contact.telefono }}</td>
+                <td>{{ contact.correo }}</td>
+                <td>{{ contact.direccion }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

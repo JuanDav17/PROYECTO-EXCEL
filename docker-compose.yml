@@ -1,11 +1,11 @@
 services:
+  # Base de Datos (MySQL)
   db:
     image: mysql:8.0
     container_name: fastapi_db
     restart: always
-    # Comando para compatibilidad de contraseña con MySQL 8.0
     command: --default-authentication-plugin=mysql_native_password
-    env_file: .env 
+    env_file: .env
     ports:
       - "3306:3306"
     volumes:
@@ -13,6 +13,7 @@ services:
     networks:
       - fastapi_net
 
+  # Backend (FastAPI)
   backend:
     build:
       context: ./backend
@@ -21,22 +22,23 @@ services:
     restart: always
     env_file: .env
     ports:
-      - "8000:8000" # Exponemos FastAPI
+      - "8000:8000"
     depends_on:
       - db
-    # Comando para iniciar Uvicorn y esperar a la DB
-    command: ["/bin/sh", "-c", "echo 'Esperando 40s a MySQL...' && sleep 40 && uvicorn main:app --host 0.0.0.0 --port 8000"]
+    # *** HACK DE TIEMPO: ESPERA 30 SEGUNDOS A QUE MYSQL ESTÉ LISTO ***
+    command: ["/bin/bash", "-c", "sleep 60 && uvicorn main:app --host 0.0.0.0 --port 8000"]
     networks:
       - fastapi_net
 
-  frontend: # <-- Sustituto de Nginx, sirve el HTML con el servidor Python
+  # Frontend (Angular)
+  frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile # Usará el Dockerfile que tiene el servidor HTTP de Python
+      dockerfile: Dockerfile
     container_name: fastapi_frontend
     restart: always
     ports:
-      - "8080:8080" # El puerto de tu PC (8080) va al puerto del servidor Python (8080)
+      - "4200:8080"
     depends_on:
       - backend
     networks:

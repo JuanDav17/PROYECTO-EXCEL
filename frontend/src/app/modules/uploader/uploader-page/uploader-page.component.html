@@ -1,0 +1,55 @@
+<div class="uploader-container">
+  <div class="upload-card">
+    <header class="card-header">
+      <h1 class="card-title">Carga y Validación de Excel V2</h1>
+      <p class="card-subtitle">Sube tu archivo .xlsx para iniciar el proceso.</p>
+    </header>
+
+    <div class="card-content">
+      <form [formGroup]="uploadForm" (ngSubmit)="onUpload()" class="upload-form">
+
+        <input 
+          type="file" 
+          #fileInput 
+          (change)="onFileSelected($event)" 
+          accept=".xlsx,.xls"
+          style="display: none;"
+        >
+
+        <div class="file-input-group">
+          <input 
+            type="text" 
+            [value]="uploadForm.get('excelFile')?.value" 
+            readonly 
+            placeholder="Ningún archivo seleccionado" 
+            class="file-display-input"
+            required
+            [class.input-error]="uploadForm.get('excelFile')?.invalid && uploadForm.get('excelFile')?.touched"
+          >
+          <button type="button" class="select-file-button" (click)="fileInput.click()">
+            <span class="icon">📎</span> Seleccionar Archivo
+          </button>
+        </div>
+        
+        <div *ngIf="uploadForm.get('excelFile')?.invalid && uploadForm.get('excelFile')?.touched" class="error-message">
+          Se requiere un archivo para la subida.
+        </div>
+
+        <div *ngIf="uploading" class="progress-bar-container">
+          <div class="progress-bar"></div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card-actions">
+      <button 
+        class="upload-button"
+        [disabled]="uploading || !selectedFile || uploadForm.invalid" 
+        (click)="onUpload()"
+      >
+        <span *ngIf="uploading">Cargando...</span>
+        <span *ngIf="!uploading">☁️ Subir y Validar</span>
+      </button>
+    </div>
+  </div>
+</div>
